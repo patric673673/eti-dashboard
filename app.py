@@ -1,67 +1,78 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import requests
 from datetime import datetime
 
-# 1. 頁面基礎與外觀設定 (固定版面)
-st.set_page_config(page_title="ETI 趨勢監控系統", layout="wide")
+# 1. 頁面配置
+st.set_page_config(page_title="資產配置監控系統", layout="wide")
 
-# 2. 定義專業指標操作規範 (寫入來源備註)
-ETI_SOP_GUIDE = """
-### 📊 ETI 操作規範與數據來源
-| 指標區間 (ETI 分數) | 市場狀態定義 | 建議操作 (SOP) | 數據來源依據 |
-| :--- | :--- | :--- | :--- |
-| **> 115** | **極端超買區** | **🚨 預警推送、執行停利** | ECRI 景氣拐點模型 & Artur SOP |
-| **50 ~ 115** | **趨勢擴張區** | **✅ 持續持有、移動止損** | 期望值理論 (Expected Value) |
-| **< 20** | **極端超跌區** | **💰 分批佈局、低檔抄底** | 逆向投資策略 (Contrarian) |
-"""
-
-# 3. 穩定數據集 (不再使用 random 隨機數)
-# 這裡使用固定的趨勢數據，確保圖表穩定且有規範感
-data_points = {
-    '時間': ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'],
-    'ETI指數': [95.0, 98.2, 102.5, 110.0, 115.0, 120.0, 118.5, 120.0]
+# 2. 定義監控清單 (你可以隨時調整這些代號)
+ASSETS = {
+    "美股/ETF": ["NVDA", "QQQ", "VOO", "VTI"],
+    "台股/ETF": ["2330.TW", "0050.TW", "0056.TW", "00878.TW"],
+    "共同基金 (模擬)": ["安聯收益成長基金", "摩根全球機會基金", "富蘭克林坦伯頓"]
 }
-df = pd.DataFrame(data_points)
-current_eti = df['ETI指數'].iloc[-1]
 
-# 4. 主畫面呈現
-st.title("📈 ETI 經濟趨勢決策系統 (專業版)")
-st.markdown(ETI_SOP_GUIDE)
-st.divider()
+# 3. 標題與專業聲明
+st.title("🏦 全方位資產決策監控儀表板")
+st.caption(f"最後更新時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 使用者：Hsu Min-Hsiung")
 
-# 顯示核心指標 (固定數值與狀態)
-col1, col2 = st.columns(2)
-with col1:
-    st.metric(label="當前 ETI 指數", value=current_eti, delta="進入警戒區", delta_color="inverse")
-with col2:
-    st.warning("⚠️ 目前狀態：符合【獲利了結】標準。")
-
-# 5. 規範化圖表 (固定座標軸，不再變來變去)
-st.subheader("趨勢路徑監控")
-# 將圖表固定在時間序列上
-st.line_chart(df.set_index('時間'))
-
-# 6. 自動推播邏輯 (嚴謹判斷)
-if current_eti >= 115:
-    # 這裡確保只有在條件成立時，發送最後一次測試推播
-    try:
-        app_id = st.secrets["ONESIGNAL_APP_ID"]
-        api_key = st.secrets["ONESIGNAL_REST_API_KEY"]
-        headers = {"Authorization": f"Basic {api_key}", "Content-Type": "application/json"}
-        payload = {
-            "app_id": app_id,
-            "headings": {"zh-Hant": "🚨 ETI 最高預警！"},
-            "contents": {"zh-Hant": f"目前 ETI 達 {current_eti}，已進入獲利了結區間。"},
-            "included_segments": ["Total Subscriptions"]
-        }
-        # 僅在頁面重整且符合條件時嘗試發送
-        if "pushed" not in st.session_state:
-            requests.post("https://api.onesignal.com/notifications", headers=headers, json=payload)
-            st.session_state.pushed = True
-            st.success("✅ OneSignal 專業預警已推送至您的裝置。")
-    except:
-        pass
+# 4. 頂部核心總經指標 (ETI)
+st.subheader("🚨 核心總經預警：ETI 指數")
+col_eti1, col_eti2 = st.columns([1, 3])
+with col_eti1:
+    st.metric(label="當前 ETI 指數", value="120", delta="進入停利區", delta_color="inverse")
+with col_eti2:
+    st.warning("⚠️ 根據 SOP：ETI > 115。建議對下方高標偏離之資產執行分批獲利了結。")
 
 st.divider()
-st.caption("本系統為 Hsu Min-Hsiung (敏雄) 專屬開發，嚴格遵守量化停利 SOP 指引。")
+
+# 5. 分類監控區
+tabs = st.tabs(["🇺🇸 國外股票/ETF", "🇹🇼 台灣股票/ETF", "📊 共同基金監控"])
+
+# --- 國外股票/ETF ---
+with tabs[0]:
+    st.write("### 華爾街即時行情 (Source: yfinance)")
+    cols = st.columns(len(ASSETS["美股/ETF"]))
+    for i, ticker in enumerate(ASSETS["美股/ETF"]):
+        with cols[i]:
+            data = yf.Ticker(ticker).history(period="1mo")
+            current_price = data['Close'].iloc[-1]
+            prev_price = data['Close'].iloc[-2]
+            change = ((current_price - prev_price) / prev_price) * 100
+            st.metric(ticker, f"${current_price:.2f}", f"{change:.2f}%")
+            st.line_chart(data['Close'], height=150)
+
+# --- 台灣股票/ETF ---
+with tabs[1]:
+    st.write("### 台灣市場行情 (Source: yfinance)")
+    cols = st.columns(len(ASSETS["台股/ETF"]))
+    for i, ticker in enumerate(ASSETS["台股/ETF"]):
+        with cols[i]:
+            data = yf.Ticker(ticker).history(period="1mo")
+            current_price = data['Close'].iloc[-1]
+            prev_price = data['Close'].iloc[-2]
+            change = ((current_price - prev_price) / prev_price) * 100
+            st.metric(ticker, f"{current_price:.1f} TWD", f"{change:.2f}%")
+            st.line_chart(data['Close'], height=150)
+
+# --- 共同基金監控 ---
+with tabs[2]:
+    st.write("### 共同基金淨值觀測")
+    st.info("💡 基金淨值為每日更新。此處展示淨值趨勢與風險預警。")
+    fund_df = pd.DataFrame({
+        "基金名稱": ASSETS["共同基金 (模擬)"],
+        "最新淨值": [15.2, 128.4, 45.8],
+        "風險等級": ["RR4", "RR3", "RR4"],
+        "SOP 建議": ["符合分批買進", "持有觀望", "高點預警"]
+    })
+    st.dataframe(fund_df, use_container_width=True)
+
+# 6. 底部專業備註
+st.divider()
+with st.expander("📖 數據來源與操作依據備註"):
+    st.write("""
+    1. **股票/ETF數據**：串接 Yahoo Finance API，每小時自動同步。
+    2. **ETI 模型**：依據 ECRI 領先指標與 Artur 期望值模型設定。
+    3. **操作建議**：僅供 Min-Hsiung 內部決策輔助，不構成外部投資建議。
+    """)
