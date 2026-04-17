@@ -2,40 +2,87 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# 1. 頁面配置
+# 1. 頁面基礎設定
 st.set_page_config(page_title="ETI 決策儀表板", layout="wide")
 
-# 2. 標題
-st.header("📈 ETI 核心趨勢與操作建議")
+# ================== 您的通知函數 (保持原樣) ==================
+def request_notification_permission():
+    st.markdown("""
+    <script>
+    function requestPushPermission() {
+        if (!("Notification" in window)) {
+            alert("您的瀏覽器不支援通知");
+            return;
+        }
+        if (Notification.permission === "granted") {
+            alert("通知權限已開啟！");
+        } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    new Notification("✅ ETI 通知已啟用", {
+                        body: "當 ETI 達到關鍵數值時，您將收到即時提醒。",
+                        icon: "https://cdn-icons-png.flaticon.com/512/1055/1055644.png"
+                    });
+                }
+            });
+        }
+    }
+    </script>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🔔 開啟行動端通知權限", use_container_width=True):
+        st.markdown('<script>requestPushPermission();</script>', unsafe_allow_html=True)
+
+def send_browser_notification(title, body, tag="eti_alert"):
+    st.markdown(f"""
+    <script>
+    if (Notification.permission === "granted") {{
+        new Notification("{title}", {{
+            body: "{body}",
+            icon: "https://cdn-icons-png.flaticon.com/512/1055/1055644.png",
+            tag: "{tag}",
+            requireInteraction: true
+        }});
+    }}
+    </script>
+    """, unsafe_allow_html=True)
+
+# ================== 主程式邏輯 ==================
+
+st.header("📊 ETI 核心趨勢與即時預警")
+
+# 這裡設定當前 ETI (您可以手動改這個數字測試效果)
+eti_total = 120 
+
+# 顯示權限按鈕
+request_notification_permission()
 st.markdown("---")
 
-# 💡 模擬當前數據（未來可改為自動抓取）
-current_eti = 125 
-prev_eti = 118
-change_pct = round(((current_eti - prev_eti) / prev_eti) * 100, 1)
-
-# 🚦 智能策略邏輯判斷
-if current_eti >= 120:
-    status_msg = "⚠️ 【建議獲利了結】"
-    status_detail = "目前指數已進入過熱區（>120），建議分批賣出獲利，入袋為安，避免回檔風險。"
-    status_type = "error" # 紅色提示
-elif current_eti <= 80:
+# 🚦 您的操作原則邏輯 (最高 120)
+if eti_total >= 115:
+    status_msg = "🚨 【最高警戒：獲利了結】"
+    status_detail = f"目前 ETI 已達 {eti_total}。進入最高壓力區，建議執行獲利了結。"
+    status_type = "error"
+    # 自動發送通知
+    send_browser_notification("🚨 ETI 最高預警！", f"目前 ETI {eti_total} 達最高標，建議立即評估獲利了結。", "eti_high")
+    
+elif eti_total <= 85:
     status_msg = "✅ 【建議分批進場】"
-    status_detail = "目前指數處於低估區（<80），市場恐慌正是佈局良機，建議開始分批買進。"
-    status_type = "success" # 綠色提示
+    status_detail = "目前指數處於低位，市場恐慌正是佈局良機。"
+    status_type = "success"
+    send_browser_notification("✅ ETI 低位訊號", "目前處於相對低點，適合分批佈局。", "eti_low")
+    
 else:
-    status_msg = "💡 【建議暫時觀望】"
-    status_detail = "目前指數在 80-120 區間震盪，方向不明確。建議保留現金，靜待明確信號出現。"
-    status_type = "info" # 藍色提示
+    status_msg = "💡 【暫時觀望】"
+    status_detail = "目前處於震盪區間，建議保留現金，靜待信號。"
+    status_type = "info"
 
-# 3. 顯示視覺化看板
+# 顯示看板
 col1, col2 = st.columns([1, 2])
-
 with col1:
-    st.metric(label="當前 ETI 指數", value=current_eti, delta=f"{change_pct}%")
+    st.metric(label="當前 ETI 總分", value=eti_total, delta="最高點")
 
 with col2:
-    # 根據判斷結果顯示變色提示框
     if status_type == "error":
         st.error(f"### {status_msg}\n{status_detail}")
     elif status_type == "success":
@@ -43,18 +90,10 @@ with col2:
     else:
         st.info(f"### {status_msg}\n{status_detail}")
 
-# 4. 趨勢圖表
-st.write("### 歷史走勢參考")
-chart_data = pd.DataFrame({
-    '日期': pd.date_range(start='2024-04-01', periods=10),
-    'ETI 指數': [110, 112, 115, 113, 117, 119, 118, 122, 124, 125]
-})
-st.line_chart(chart_data.set_index('日期'))
+# 趨勢圖表
+st.write("### 歷史趨勢圖")
+chart_data = pd.DataFrame(np.random.randn(20, 1) + (eti_total/100), columns=['ETI 指數'])
+st.line_chart(chart_data)
 
-# 5. 操作原則小筆記
-with st.expander("📌 查看 ETI 操作原則"):
-    st.write("""
-    * **紅色警告**：指數 > 120。代表市場太樂觀，你要反向思考，準備獲利。
-    * **綠色信心**：指數 < 80。代表市場太悲觀，你要勇敢進場。
-    * **藍色觀望**：指數在中間。代表目前是常態，不需要頻繁操作。
-    """)
+# 紀錄狀態防止重複通知
+st.session_state.last_eti = eti_total
