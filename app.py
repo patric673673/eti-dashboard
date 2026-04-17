@@ -7,7 +7,7 @@ import numpy as np
 # 1. 頁面基礎設定
 st.set_page_config(page_title="ETI 專業預警系統", layout="wide")
 
-# 初始化 session_state
+# 初始化 session_state，避免重複發送
 if "last_high_eti_push" not in st.session_state:
     st.session_state.last_high_eti_push = 0
 
@@ -22,11 +22,11 @@ def send_onesignal_notification(title: str, message: str):
             "Authorization": f"Basic {api_key}"
         }
         
-        # 這就是你剛才說沒看到的 Payload 區塊
         payload = {
             "app_id": app_id,
             "headings": {"en": title, "zh-Hant": title},
             "contents": {"en": message, "zh-Hant": message},
+            # 這是最關鍵的一行：發給所有人
             "included_segments": ["Total Subscriptions"], 
             "url": "https://share.streamlit.io/patric673673/eti-dashboard/main"
         }
@@ -37,16 +37,18 @@ def send_onesignal_notification(title: str, message: str):
         if response.status_code == 200:
             st.success("✅ OneSignal 預警推送已成功發送！")
         else:
-            st.error(f"推送失敗。代碼：{response.status_code}")
+            # 如果還是報錯，我們會在這裡看到原因
+            st.error(f"推送失敗。原因：{response.text}")
     except Exception as e:
         st.error(f"系統錯誤: {e}")
 
 # ================== 主畫面呈現 ==================
-st.header("📈 ETI 核心分析 - 決策儀表板")
+st.header("🚀 ETI 核心趨勢與 OneSignal 預警")
 
-eti_total = 120 # 設定為 120 進行測試
+# 這裡設定目前的 ETI 數值為 120 觸發測試
+eti_total = 120 
 
-# 🔔 訂閱按鈕
+# 🔔 訂閱按鈕 (這步很重要)
 if st.button("🔔 點此開啟行動端即時通知", use_container_width=True, type="primary"):
     st.markdown("""
     <script>
@@ -55,13 +57,20 @@ if st.button("🔔 點此開啟行動端即時通知", use_container_width=True,
     </script>
     """, unsafe_allow_html=True)
 
-# 🚦 120 最高標邏輯
+st.markdown("---")
+
+# 🚦 120 最高標自動推播
 if eti_total >= 115:
     st.error(f"### 🚨 【最高警戒：獲利了結】\n目前 ETI：{eti_total}")
     
     current_time = datetime.now().timestamp()
     if (current_time - st.session_state.last_high_eti_push) > 3600:
-        send_onesignal_notification("🚨 ETI 最高預警！", f"目前 ETI 達 {eti_total}，建議執行獲利了結。")
+        send_onesignal_notification(
+            title="🚨 ETI 最高預警！",
+            message=f"目前 ETI 達 {eti_total}，建議執行獲利了結。"
+        )
         st.session_state.last_high_eti_push = current_time
 
-st.line_chart(pd.DataFrame(np.random.randn(20, 1) + (eti_total/100)))
+# 繪製圖表
+chart_data = pd.DataFrame(np.random.randn(20, 1) + (eti_total/100), columns=['ETI 指數'])
+st.line_chart(chart_data)
