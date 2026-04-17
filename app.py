@@ -64,7 +64,7 @@ if eti_total >= 115:
     st.error(f"### 🚨 【最高警戒：獲利了結】\n目前 ETI：{eti_total}")
     
     current_time = datetime.now().timestamp()
-    if (current_time - st.session_state.last_high_eti_push) > 3600:
+    if True:
         send_onesignal_notification(
             title="🚨 ETI 最高預警！",
             message=f"目前 ETI 達 {eti_total}，建議執行獲利了結。"
