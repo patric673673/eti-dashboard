@@ -1,99 +1,98 @@
+import requests
 import streamlit as st
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
-# 1. 頁面基礎設定
-st.set_page_config(page_title="ETI 決策儀表板", layout="wide")
+# 1. 頁面配置
+st.set_page_config(page_title="ETI 專業預警系統", layout="wide")
 
-# ================== 您的通知函數 (保持原樣) ==================
-def request_notification_permission():
-    st.markdown("""
-    <script>
-    function requestPushPermission() {
-        if (!("Notification" in window)) {
-            alert("您的瀏覽器不支援通知");
-            return;
-        }
-        if (Notification.permission === "granted") {
-            alert("通知權限已開啟！");
-        } else if (Notification.permission !== "denied") {
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    new Notification("✅ ETI 通知已啟用", {
-                        body: "當 ETI 達到關鍵數值時，您將收到即時提醒。",
-                        icon: "https://cdn-icons-png.flaticon.com/512/1055/1055644.png"
-                    });
-                }
-            });
-        }
+# ================== OneSignal 推送函數 (您的原始邏輯) ==================
+def send_onesignal_notification(title: str, message: str, player_ids: list = None):
+    """透過 OneSignal API 發送後端推送"""
+    # 檢查 secrets 是否已設定，避免程式崩潰
+    if 'ONESIGNAL_REST_API_KEY' not in st.secrets:
+        st.warning("請在 Streamlit Secrets 中設定 ONESIGNAL 金鑰")
+        return
+
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": f"Basic {st.secrets['ONESIGNAL_REST_API_KEY']}"
     }
-    </script>
-    """, unsafe_allow_html=True)
-    
-    if st.button("🔔 開啟行動端通知權限", use_container_width=True):
-        st.markdown('<script>requestPushPermission();</script>', unsafe_allow_html=True)
+    payload = {
+        "app_id": st.secrets['ONESIGNAL_APP_ID'],
+        "headings": {"en": title, "zh-Hant": title},      
+        "contents": {"en": message, "zh-Hant": message},    
+        "url": "https://your-app.streamlit.app"   # 記得換成您的實際網址
+    }
+    try:
+        response = requests.post("https://api.onesignal.com/notifications", 
+                                 headers=headers, json=payload)
+        if response.status_code == 200:
+            st.success("✅ OneSignal 預警推送已成功發送")
+        else:
+            st.error(f"推送失敗: {response.text}")
+    except Exception as e:
+        st.error(f"推送異常: {e}")
 
-def send_browser_notification(title, body, tag="eti_alert"):
-    st.markdown(f"""
-    <script>
-    if (Notification.permission === "granted") {{
-        new Notification("{title}", {{
-            body: "{body}",
-            icon: "https://cdn-icons-png.flaticon.com/512/1055/1055644.png",
-            tag: "{tag}",
-            requireInteraction: true
-        }});
-    }}
-    </script>
-    """, unsafe_allow_html=True)
+# ================== 主程式介面 ==================
 
-# ================== 主程式邏輯 ==================
+st.header("🚀 ETI 核心趨勢與 OneSignal 預警")
 
-st.header("📊 ETI 核心趨勢與即時預警")
-
-# 這裡設定當前 ETI (您可以手動改這個數字測試效果)
+# 這裡設定當前 ETI (設定為 120 進行測試)
 eti_total = 120 
 
-# 顯示權限按鈕
-request_notification_permission()
+# 使用者訂閱按鈕
+if st.button("🔔 開啟 ETI 即時推送通知 (OneSignal)", use_container_width=True, type="primary"):
+    st.markdown("""
+    <script>
+        if (window.OneSignal) {
+            OneSignal.showSlidedownPrompt();
+        } else {
+            alert("OneSignal 尚未初始化，請確認 static 資料夾內的 SDK 檔案");
+        }
+    </script>
+    """, unsafe_allow_html=True)
+    st.info("請在彈出的視窗中點選「允許通知」")
+
 st.markdown("---")
 
-# 🚦 您的操作原則邏輯 (最高 120)
+# 🚦 自動推送邏輯 (依照您的 120 最高標)
 if eti_total >= 115:
     status_msg = "🚨 【最高警戒：獲利了結】"
-    status_detail = f"目前 ETI 已達 {eti_total}。進入最高壓力區，建議執行獲利了結。"
     status_type = "error"
-    # 自動發送通知
-    send_browser_notification("🚨 ETI 最高預警！", f"目前 ETI {eti_total} 達最高標，建議立即評估獲利了結。", "eti_high")
     
+    # 自動推送範例：1小時內不重複發送
+    last_push = st.session_state.get("last_high_eti_push", 0)
+    current_time = datetime.now().timestamp()
+    
+    if (current_time - last_push) > 3600:
+        send_onesignal_notification(
+            title="🚨 ETI 最高預警！",
+            message=f"目前 ETI 達 {eti_total} → 進入最高壓力區，建議執行獲利了結。"
+        )
+        st.session_state.last_high_eti_push = current_time
+
 elif eti_total <= 85:
     status_msg = "✅ 【建議分批進場】"
-    status_detail = "目前指數處於低位，市場恐慌正是佈局良機。"
     status_type = "success"
-    send_browser_notification("✅ ETI 低位訊號", "目前處於相對低點，適合分批佈局。", "eti_low")
-    
 else:
     status_msg = "💡 【暫時觀望】"
-    status_detail = "目前處於震盪區間，建議保留現金，靜待信號。"
     status_type = "info"
 
-# 顯示看板
+# 顯示視覺看板
 col1, col2 = st.columns([1, 2])
 with col1:
-    st.metric(label="當前 ETI 總分", value=eti_total, delta="最高點")
-
+    st.metric(label="當前 ETI 指數", value=eti_total, delta="最高點")
 with col2:
     if status_type == "error":
-        st.error(f"### {status_msg}\n{status_detail}")
+        st.error(f"### {status_msg}")
     elif status_type == "success":
-        st.success(f"### {status_msg}\n{status_detail}")
+        st.success(f"### {status_msg}")
     else:
-        st.info(f"### {status_msg}\n{status_detail}")
+        st.info(f"### {status_msg}")
 
 # 趨勢圖表
-st.write("### 歷史趨勢圖")
+st.write("### 歷史趨勢參考")
 chart_data = pd.DataFrame(np.random.randn(20, 1) + (eti_total/100), columns=['ETI 指數'])
 st.line_chart(chart_data)
-
-# 紀錄狀態防止重複通知
-st.session_state.last_eti = eti_total
