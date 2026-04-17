@@ -7,13 +7,15 @@ import numpy as np
 # 1. 頁面基礎設定
 st.set_page_config(page_title="ETI 專業預警系統", layout="wide")
 
-# 初始化 session_state，避免重複發送
+# 初始化 session_state，避免重複發送推播
 if "last_high_eti_push" not in st.session_state:
     st.session_state.last_high_eti_push = 0
 
 # ================== OneSignal 推送函數 ==================
 def send_onesignal_notification(title: str, message: str):
+    """透過 OneSignal API 發送推送給所有訂閱者"""
     try:
+        # 從 Streamlit Secrets 讀取金鑰
         app_id = st.secrets["ONESIGNAL_APP_ID"]
         api_key = st.secrets["ONESIGNAL_REST_API_KEY"]
         
@@ -26,8 +28,7 @@ def send_onesignal_notification(title: str, message: str):
             "app_id": app_id,
             "headings": {"en": title, "zh-Hant": title},
             "contents": {"en": message, "zh-Hant": message},
-            # 這是最關鍵的一行：發給所有人
-            "included_segments": ["Total Subscriptions"], 
+            "included_segments": ["Total Subscriptions"], # 發送給所有按下允許的人
             "url": "https://share.streamlit.io/patric673673/eti-dashboard/main"
         }
         
@@ -37,42 +38,45 @@ def send_onesignal_notification(title: str, message: str):
         if response.status_code == 200:
             st.success("✅ OneSignal 預警推送已成功發送！")
         else:
-            # 如果還是報錯，我們會在這裡看到原因
-            st.error(f"推送失敗。原因：{response.text}")
+            st.error(f"推送失敗。代碼：{response.status_code}")
     except Exception as e:
         st.error(f"系統錯誤: {e}")
 
 # ================== 主畫面呈現 ==================
 st.header("🚀 ETI 核心趨勢與 OneSignal 預警")
 
-# 這裡設定目前的 ETI 數值為 120 觸發測試
+# 這裡設定目前的 ETI 數值
 eti_total = 120 
 
-# 🔔 訂閱按鈕 (這步很重要)
+# 🔔 訂閱按鈕 (這步一定要點，否則收不到)
 if st.button("🔔 點此開啟行動端即時通知", use_container_width=True, type="primary"):
     st.markdown("""
     <script>
-        if (window.OneSignal) { window.OneSignal.showSlidedownPrompt(); }
-        else { alert("OneSignal 初始化中..."); }
+        if (window.OneSignal) {
+            OneSignal.showSlidedownPrompt();
+        } else {
+            alert("OneSignal 正在初始化，請稍候再試");
+        }
     </script>
     """, unsafe_allow_html=True)
+    st.info("請在彈出的視窗中點選「允許通知」")
 
 st.markdown("---")
 
-# 🚦 120 最高標自動推播
+# 🚦 120 最高標自動推播邏輯
 if eti_total >= 115:
-    st.error(f"### 🚨 【最高警戒：獲利了結】\n目前 ETI：{eti_total}")
+    st.error(f"### 🚨 【最高警戒：獲利了結】\n目前 ETI 已達 {eti_total}。建議紀律執行賣出。")
     
-   current_time = datetime.now().timestamp()
-        # 確保 if 後面直接跟著條件，不要有斷行
-        if (current_time - st.session_state.last_high_eti_push) > 3600:
-            send_onesignal_notification(
+    # 檢查是否一小時內已經推過
+    current_time = datetime.now().timestamp()
+    if (current_time - st.session_state.last_high_eti_push) > 3600:
         send_onesignal_notification(
             title="🚨 ETI 最高預警！",
-            message=f"目前 ETI 達 {eti_total}，建議執行獲利了結。"
+            message=f"目前 ETI 達 {eti_total}，已達獲利了結標準。"
         )
         st.session_state.last_high_eti_push = current_time
 
 # 繪製圖表
+st.subheader("歷史趨勢參考")
 chart_data = pd.DataFrame(np.random.randn(20, 1) + (eti_total/100), columns=['ETI 指數'])
 st.line_chart(chart_data)
